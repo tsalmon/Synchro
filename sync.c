@@ -1,10 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <string.h>
 #include "sync.h"
+
 
 /*alias avec (struct stat) */
 #define PLUSRECENT(a,b) (a.st_mtime < b.st_mtime)
@@ -29,7 +31,7 @@ int sync_rec(char *src, char *dest, int options)
  */
 void getstat(char *str, struct stat *buffer)
 {
-  if(-1 == stat(str, buffer))
+  if(-1 == lstat(str, buffer))
     {
       puts("Une erreur a arreté le programme");
       exit(EXIT_FAILURE);
@@ -178,11 +180,64 @@ void ajouter(char *dest, char *src, char *fichier)
   printf("ajout de %s dans le repertoire de destination\n", fichier);
 }
 
+void option_n(struct stat buf[], struct dirent **fichier, char* dest, char *src, int options, char **way){
+  if(S_ISREG(buf[0].st_mode))
+    {
+      if(strcmp("lnk", fichier[0]->d_name))
+	ajouter(dest, src, fichier[0]->d_name);
+      else
+	printf("erreur LIEN SYMBOLIQUE NON RECONNU %o\n",buf[0].st_mode );
+    }
+  else if(OPT_R(options) && S_ISDIR(buf[0].st_mode) && buf[0].st_ino != dest_stat.st_ino)
+    {
+      free(way[0]);
+      way[0] = addstr(src, fichier[0]->d_name, '/');
+      way[1] = addstr(dest, fichier[0]->d_name, '/');
+      getstat(way[0], &buf[0]);
+      mkdir(way[1], buf[0].st_mode);
+      synchro(way[0], way[1], options);
+      free(way[1]);
+    }
+  else if(OPT_S(options))
+    {
+      struct stat sd;
+      way[1] = addstr(dest, fichier[0]->d_name,'/'); 
+      puts(way[0]);
+      if(!lstat(way[0], &sd))
+	{
+	  char str[BUFSIZ];
+	  int cc;
+	  if(S_ISLNK(sd.st_mode))
+	    {
+	      cc = readlink(way[0], str, BUFSIZ);
+	      str[cc] = '\0';
+	      printf("%s <- %s\n",str,way[1]);
+	      symlink(str,way[1]);
+	    }
+	}
+      getstat(way[0], &buf[0]);	   
+      free(way[1]);
+    }
+  free(way[0]);
+  free(way[1]);
+  free(way);
+}
+
+void option_r(char **way, char *src, char *dest, struct dirent **fichier, int options)
+{
+  way[0] = addstr(src, fichier[0]->d_name,'/');
+  way[1] = addstr(dest, fichier[0]->d_name, '/');
+  synchro(way[0], way[1], options);
+  free(way[1]);
+  free(way[0]);
+  free(way);
+}
+
 /* Appel: depuis le main(int argc, char **argv)                                  
  * Contexte: immédiat
  * Utilisation: synchronisation avec options              
  */
-int sync(char *src, char *dest, int options)
+int synchro(char *src, char *dest, int options)
 {
   char **way = calloc(2, sizeof(char *));
   struct stat buf[2];
@@ -198,6 +253,14 @@ int sync(char *src, char *dest, int options)
       way[0] = addstr(src, fichier[0]->d_name, '/');
       dest_rep = opendir(dest);
       getstat(way[0], &buf[0]);
+      
+      if(buf[0].st_mode >> 12 == 012)
+	{
+	  printf("%s est un lien symbo(%o)\n",fichier[0]->d_name,buf[0].st_mode >> 12);
+	}
+      else
+	printf("-> %s\n",fichier[0]->d_name);
+      
       while(NULL != (fichier[1] = readdir(dest_rep)))
 	{
 	
@@ -214,30 +277,15 @@ int sync(char *src, char *dest, int options)
 		modifier(way, options);
 	    }
 	
-	  free(way[1]);
+      	  free(way[1]);
 	}
-      /* option n */
       if(no_exist && OPT_N(options) )
-	{
-	  if(S_ISREG(buf[0].st_mode))
-	    ajouter(dest, src, fichier[0]->d_name);	
-	  else if(OPT_R(options) && S_ISDIR(buf[0].st_mode) && buf[0].st_ino != dest_stat.st_ino)
-	    {
-	      way[0] = addstr(src, fichier[0]->d_name, '/');
-	      way[1] = addstr(dest, fichier[0]->d_name, '/');
-	      getstat(way[0], &buf[0]);
-	      mkdir(way[1], buf[0].st_mode);
-	      sync(way[0], way[1], options);
-	      free(way[1]);
-	    }
-	}
-      /* option -r */
+	  option_n(buf, fichier, dest, src, options, way);   
       else if(!no_exist && OPT_R(options) && S_ISDIR(buf[0].st_mode) && buf[0].st_ino != dest_stat.st_ino)
+	  option_r(way, src, dest, fichier, options);
+      else if(!no_exist && OPT_S(options))
 	{
-	  way[0] = addstr(src, fichier[0]->d_name,'/');
-	  way[1] = addstr(dest, fichier[0]->d_name, '/');
-	  sync(way[0], way[1], options);
-	  free(way[1]);
+	  
 	}
       closedir(dest_rep);
       free(way[0]);

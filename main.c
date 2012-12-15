@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -79,7 +80,7 @@ int main(int argc, char **argv)
       else
 	{
 	  getstat(argv[2], &dest_stat);
-	  sync(argv[3], argv[2], r + n + i +s);
+	  synchro(argv[3], argv[2], r + n + i +s);
 	}
     }
   else if(argc == 3)
@@ -87,7 +88,7 @@ int main(int argc, char **argv)
       if(!dir_exist(argv[1]) || !dir_exist(argv[2]))
 	return (0);
       getstat(argv[1], &dest_stat);
-      sync(argv[2], argv[1], 0);
+      synchro(argv[2], argv[1], 0);
     }
   else
     {
