@@ -4,38 +4,29 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/time.h>
 #include <string.h>
+#include <fcntl.h>
+#include <utime.h>
 #include "sync.h"
 
 
 /*alias avec (struct stat) */
-#define PLUSRECENT(a,b) (a.st_mtime < b.st_mtime)
+#define PLUSRECENT ((long)buf[0].st_mtime > (long)buf[1].st_mtime)
 /* alias avec (struct dirent*) */
 #define STRCMP(a,b) (strcmp(a->d_name, b->d_name))
-/*
- * Appel : depuis le main 
- * Condition d'appel: si
- * (options valides et argc(de main) == 4 et -r signalé)
- * ou si argc == 3                                     
- *      
- */
-int sync_rec(char *src, char *dest, int options)
-{
-  return 0;
-}
+#define IS_DEST(a) (a.st_ino != dest_stat.st_ino)
 
 /*
  * Appel: depuis sync
  * Condition d'appel: aucune
  * Utiliter: permet de recuprer les informations d'un fichier
  */
-void getstat(char *str, struct stat *buffer)
+int getstat(char *str, struct stat *buffer)
 {
-  if(-1 == lstat(str, buffer))
-    {
-      puts("Une erreur a arreté le programme");
-      exit(EXIT_FAILURE);
-    }
+    if(-1 == lstat(str, buffer))
+        return 1;
+    return 0;
 }
 
 int reponse_positive(char *str)
@@ -103,7 +94,9 @@ int modifier_fichier_binaire(char **way)
   return 0;
 }
 
-
+/*
+ * a revoir
+ */
 int modifier_fichier(char **way)
 {
   int binaire = 1;
@@ -140,6 +133,8 @@ int modifier_fichier(char **way)
 void modifier(char **way, int options)
 {
   struct stat droits;
+  struct stat temps_way_1;
+  struct utimbuf temps;
   getstat(way[0], &droits);
   if(OPT_I(options))
     {
@@ -155,6 +150,10 @@ void modifier(char **way, int options)
       printf("%s remplacé par %s.\n", way[1], way[0]);
       modifier_fichier(way);      
     }
+  stat(way[0],	&temps_way_1);
+  temps.actime = temps_way_1.st_atime;
+  temps.modtime = temps_way_1.st_mtime;
+  utime(way[1], &temps);
   chmod(way[1], droits.st_mode);
 }
 
@@ -180,118 +179,141 @@ void ajouter(char *dest, char *src, char *fichier)
   printf("ajout de %s dans le repertoire de destination\n", fichier);
 }
 
-void option_n(struct stat buf[], struct dirent **fichier, char* dest, char *src, int options, char **way){
-  if(S_ISREG(buf[0].st_mode))
+void option_n(char *way[], dirent *fichier[],char *dest, char *src)
+{
+    way[1] = addstr(dest, fichier[0]->d_name,'/'); 
+    if(S_ISREG(buf[0].st_mode))
     {
-      if(strcmp("lnk", fichier[0]->d_name))
-	ajouter(dest, src, fichier[0]->d_name);
-      else
-	printf("erreur LIEN SYMBOLIQUE NON RECONNU %o\n",buf[0].st_mode );
+        modifier(way,options);
+        free(way[1]);
     }
-  else if(OPT_R(options) && S_ISDIR(buf[0].st_mode) && buf[0].st_ino != dest_stat.st_ino)
+    else if(OPT_R(options, buf[0]))
     {
-      free(way[0]);
-      way[0] = addstr(src, fichier[0]->d_name, '/');
-      way[1] = addstr(dest, fichier[0]->d_name, '/');
-      getstat(way[0], &buf[0]);
-      mkdir(way[1], buf[0].st_mode);
-      synchro(way[0], way[1], options);
-      free(way[1]);
+        mkdir(way[1],buf[0].st_mode);
+        free(way[1]);
+        option_r(way, dest, src, fichier);
     }
-  else if(OPT_S(options))
+    else if(OPT_S(options, buf[0]))
     {
-      struct stat sd;
-      way[1] = addstr(dest, fichier[0]->d_name,'/'); 
-      puts(way[0]);
-      if(!lstat(way[0], &sd))
-	{
-	  char str[BUFSIZ];
-	  int cc;
-	  if(S_ISLNK(sd.st_mode))
-	    {
-	      cc = readlink(way[0], str, BUFSIZ);
-	      str[cc] = '\0';
-	      printf("%s <- %s\n",str,way[1]);
-	      symlink(str,way[1]);
-	    }
-	}
-      getstat(way[0], &buf[0]);	   
-      free(way[1]);
+        char source[1024];
+        ssize_t len = readlink(way[0], source, 1023);
+        source[len] = '\0';
+        symlink(source, way[1]);
+        free(way[1]);
+        option_s(src, dest, way, fichier);
     }
-  free(way[0]);
-  free(way[1]);
-  free(way);
 }
 
-void option_r(char **way, char *src, char *dest, struct dirent **fichier, int options)
+void option_s(char *src, char *dest, char **way, dirent *fichier[])
 {
-  way[0] = addstr(src, fichier[0]->d_name,'/');
-  way[1] = addstr(dest, fichier[0]->d_name, '/');
-  synchro(way[0], way[1], options);
-  free(way[1]);
-  free(way[0]);
-  free(way);
+    char *ptr;
+    char actualpath[1024];
+    char source1[1024];
+    char source2[1024];
+    ssize_t len1;
+    ssize_t len2;
+    ptr = realpath(src, actualpath);
+    way[1] = addstr(dest, fichier[0]->d_name,'/');
+    len1 = readlink(way[0], source1, 1023);
+    len2 = readlink(way[1], source2, 1023);
+    source1[len1] = '\0';
+    source2[len2] = '\0';
+    if(strcmp(source1, source2))
+    {
+        free(way[0]);
+        way[0] = addstr(ptr, source1,'/');
+        unlink(way[1]);
+        symlink(way[0], way[1]);
+    }
+    free(way[1]);
 }
 
-/* Appel: depuis le main(int argc, char **argv)                                  
- * Contexte: immédiat
- * Utilisation: synchronisation avec options              
- */
-int synchro(char *src, char *dest, int options)
+void option_r(char **way, char *dest, char *src, dirent *fichier[])
 {
-  char **way = calloc(2, sizeof(char *));
-  struct stat buf[2];
-  struct dirent *fichier[2];
-  DIR *dest_rep, *src_rep = opendir(src);
+    way[1] = addstr(dest, fichier[0]->d_name,'/');
+    synchro(way[0], way[1]);
+    free(way[1]);
+}
+void option(int no_exist, char **way, char *src, char *dest, dirent *fichier[])
+{
+    if(OPT_N(options) && no_exist)
+        option_n(way, fichier, dest, src);
+    if((!no_exist) && OPT_R(options, buf[0]) && IS_DEST(buf[0]))
+        option_r(way, dest, src, fichier);
+    if(!no_exist && OPT_S(options, buf[0]))
+        option_s(src, dest, way, fichier);
+}
 
-  while(NULL != (fichier[0] = readdir(src_rep)))
+int synchro_recherche(char **w, char *s, char *d, dirent *f[])
+{
+    DIR *dest_rep;
+    int no_exist = 1;
+    if(getstat(w[0], &buf[0]))
+        return -1;
+    dest_rep = opendir(d);
+    while(NULL != (f[1] = readdir(dest_rep)))
     {
-      int no_exist = 1;
-      if(!strcmp(fichier[0]->d_name,".") || !strcmp(fichier[0]->d_name, ".."))
-	continue;
-
-      way[0] = addstr(src, fichier[0]->d_name, '/');
-      dest_rep = opendir(dest);
-      getstat(way[0], &buf[0]);
-      
-      if(buf[0].st_mode >> 12 == 012)
-	{
-	  printf("%s est un lien symbo(%o)\n",fichier[0]->d_name,buf[0].st_mode >> 12);
-	}
-      else
-	printf("-> %s\n",fichier[0]->d_name);
-      
-      while(NULL != (fichier[1] = readdir(dest_rep)))
-	{
-	
-	  if(!strcmp(fichier[1]->d_name,".") || !strcmp(fichier[1]->d_name, ".."))
-	    continue;
-
-	  way[1] = addstr(dest, fichier[1]->d_name, '/');
-	  getstat(way[1], &buf[1]);
-	  
-	  if(!(STRCMP(fichier[0], fichier[1])))
-	    {
-	      no_exist = 0;
-	      if(PLUSRECENT(buf[1], buf[0]) && S_ISREG(buf[1].st_mode) &&  S_ISREG(buf[0].st_mode))
-		modifier(way, options);
-	    }
-	
-      	  free(way[1]);
-	}
-      if(no_exist && OPT_N(options) )
-	  option_n(buf, fichier, dest, src, options, way);   
-      else if(!no_exist && OPT_R(options) && S_ISDIR(buf[0].st_mode) && buf[0].st_ino != dest_stat.st_ino)
-	  option_r(way, src, dest, fichier, options);
-      else if(!no_exist && OPT_S(options))
-	{
-	  
-	}
-      closedir(dest_rep);
-      free(way[0]);
+        if(!strcmp(f[1]->d_name,".") || !strcmp(f[1]->d_name, ".."))
+            continue;
+        w[1] = addstr(d, f[1]->d_name, '/');
+        if(getstat(w[1], &buf[1]))
+            continue;
+        if(!(STRCMP(f[0], f[1])))
+        {
+            no_exist = 0;
+            if(PLUSRECENT && S_ISREG(buf[1].st_mode) && S_ISREG(buf[0].st_mode))
+            {
+                modifier(w, options);
+            }
+        }
+        free(w[1]);
     }
-  free(way);  closedir(src_rep);
-  return 0;
+    closedir(dest_rep);
+    return no_exist;
+}
+
+int synchro_droits(char *src, struct stat *buf_droits, int droits_init)
+{
+    stat(src, buf_droits);
+    if((buf_droits->st_mode & 00400) == 0)
+    {
+        printf("Impossible d'ouvrir '%s'.\n", src);
+        return -1;
+    }
+    droits_init = buf_droits->st_mode;
+    chmod(src, buf_droits->st_mode & 00555);
+    if((buf_droits->st_mode & 00500) == 0)
+    {
+        printf("Impossible d'ouvrir '%s'.\n", src);
+        return -1;
+    }
+    return droits_init;
+}
+
+void synchro(char *src, char *dest)
+{
+    char **way;
+    struct stat buf_droits;
+    int droits_init;
+    struct dirent *fichier[2];
+    DIR *src_rep;
+    int no_exist;
+    way = calloc(2, sizeof(char *));
+    if((droits_init = synchro_droits(src, &buf_droits, droits_init)) == -1)
+        return ;
+    src_rep = opendir(src);
+    while(NULL != (fichier[0] = readdir(src_rep)))
+    {
+        if(!strcmp(fichier[0]->d_name,".") || !strcmp(fichier[0]->d_name, ".."))
+            continue;
+        way[0] = addstr(src, fichier[0]->d_name, '/');
+        no_exist = synchro_recherche(way, src, dest, fichier);
+        option(no_exist, way, src, dest, fichier);
+        free(way[0]);
+    }
+    chmod(src, droits_init);
+    free(way);  
+    closedir(src_rep);
 }
 
 /*

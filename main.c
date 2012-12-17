@@ -44,7 +44,7 @@ int dir_exist(char *dir)
   DIR *test_exist;
   if(NULL == (test_exist = opendir(dir)))
     {
-      printf("Le repertoire '%s' n'existe pas\n", dir);
+      printf("Impossible d'ouvrir '%s'\n", dir);
       return 0;
     }
   closedir(test_exist);
@@ -79,8 +79,9 @@ int main(int argc, char **argv)
 	return 0;
       else
 	{
+	  options = r + n + i + s;
 	  getstat(argv[2], &dest_stat);
-	  synchro(argv[3], argv[2], r + n + i +s);
+	  synchro(argv[3], argv[2]);
 	}
     }
   else if(argc == 3)
@@ -88,7 +89,7 @@ int main(int argc, char **argv)
       if(!dir_exist(argv[1]) || !dir_exist(argv[2]))
 	return (0);
       getstat(argv[1], &dest_stat);
-      synchro(argv[2], argv[1], 0);
+      synchro(argv[2], argv[1]);
     }
   else
     {
