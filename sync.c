@@ -63,66 +63,84 @@ char *saisie()
  * etre copié
  * Utilisation: Permet de copier des fichiers binaires
  */
-int modifier_fichier(char **way)
+int modifier_fichier_binaire(char **way)
 {
   FILE *f, *f2;
   char *buf;
   int taille;
-  
   if(NULL == (f = fopen(way[0],"rb")))
     {
-      printf("Impossible d'ouvrir le fichier ");
+      printf("Impossible d'ouvrir le fichier %s en lecture", way[0]);
       return 0;
     }
   if(NULL == (f2 =  fopen(way[1],"wb")))
     {
-      puts("erreur 2");
+      printf("Impossible d'ouvrir le fichier %s en ecriture", way[1]);
       fclose(f);
       return 0;
     }
-  
   fseek(f, 0, SEEK_END);
   taille = ftell(f);
   fseek(f, 0, SEEK_SET);
-  
   buf = malloc(sizeof(char)*taille);
-  
   fread(buf, sizeof(char), taille, f);
   fwrite(buf, sizeof(char), taille,f2);
-  
   free(buf); fclose(f2); fclose(f);
   return 0;
 }
 
-/*
-  int modifier_fichier(char **way)
-  {
+int modifier_fichier(char **way)
+{
+  /*
   int binaire = 1;
   char c;
   FILE *f;
   FILE *f2;
   if(NULL == (f = fopen(way[0],"r")))
-  {
-  printf("Impossible d'ouvrir le fichier %s.\n", way[0]);
-  return -1;
-  }
+    {
+      printf("Impossible d'ouvrir le fichier %s.\n", way[0]);
+      return -1;
+    }
   if(NULL == (f2 = fopen(way[1],"w+")))
-  {
-  printf("Impossible d'ouvrir le fichier %s.\n", way[1]);
-  fclose(f);
-  return -1;
-  }
+    {
+      printf("Impossible d'ouvrir le fichier %s.\n", way[1]);
+      fclose(f);
+      return -1;
+    }
   while(EOF != (c = fgetc(f) ) )
-  {
-  binaire = 0;
-  fputc(c, f2);
-  }
+    {
+      binaire = 0;
+      fputc(c, f2);
+    }
   fclose(f); fclose(f2);
   if(binaire)
-  modifier_fichier_binaire(way);
+    modifier_fichier_binaire(way);
   return 0;
-  } 
-*/
+  */
+  FILE *f, *f2;
+  char *buf;
+  int taille;
+  if(NULL == (f = fopen(way[0],"r")))
+    {
+      printf("Impossible d'ouvrir le fichier %s en lecture", way[0]);
+      return 0;
+    }
+  if(NULL == (f2 =  fopen(way[1],"w")))
+    {
+      printf("Impossible d'ouvrir le fichier %s en ecriture", way[1]);
+      fclose(f);
+      return 0;
+    }
+  fseek(f, 0, SEEK_END);
+  taille = ftell(f);
+  fseek(f, 0, SEEK_SET);
+  buf = malloc(sizeof(char)*taille);
+  fread(buf, sizeof(char), taille, f);
+  fwrite(buf, sizeof(char), taille,f2);
+  free(buf); fclose(f2); fclose(f);
+  return 0;
+  
+} 
 
 /* Appel depuis sync
  * Condition d'appel: way[0](source) et way[1](destinationt
@@ -180,28 +198,27 @@ void ajouter(char *dest, char *src, char *fichier)
 
 void option_n(char *way[], dirent *fichier[],char *dest, char *src)
 {
-    way[1] = addstr(dest, fichier[0]->d_name,'/'); 
-    if(S_ISREG(buf[0].st_mode))
+  way[1] = addstr(dest, fichier[0]->d_name,'/'); 
+  if(S_ISREG(buf[0].st_mode))
     {
-        modifier(way,options);
-        free(way[1]);
+      modifier(way,options);	
+      free(way[1]);
     }
-    else if(OPT_R(options, buf[0]))
+  else if(OPT_R(options, buf[0]))
     {
-        mkdir(way[1],buf[0].st_mode);
-        free(way[1]);
-        option_r(way, dest, src, fichier);
+      mkdir(way[1],buf[0].st_mode);
+      free(way[1]);
+      option_r(way, dest, src, fichier);
     }
-    else if(OPT_S(options, buf[0]))
+  else if(OPT_S(options, buf[0]))
     {
-        char source[1024];
-        ssize_t len = readlink(way[0], source, 1023);
-        source[len] = '\0';
-        symlink(source, way[1]);
-        free(way[1]);
-        option_s(src, dest, way, fichier);
+      char source[1024];
+      ssize_t len = readlink(way[0], source, 1023);
+      source[len] = '\0';
+      symlink(source, way[1]);
+      free(way[1]);
+      option_s(src, dest, way, fichier);
     }
-    free(way[1]);
 }
 
 void option_s(char *src, char *dest, char **way, dirent *fichier[])
@@ -231,6 +248,7 @@ void option_s(char *src, char *dest, char **way, dirent *fichier[])
 void option_r(char **way, char *dest, char *src, dirent *fichier[])
 {
     way[1] = addstr(dest, fichier[0]->d_name,'/');
+    printf("%s %s\n", way[0], way[1]);
     synchro(way[0], way[1]);
     free(way[1]);
 }
@@ -240,7 +258,7 @@ void option_r(char **way, char *dest, char *src, dirent *fichier[])
  * Contexte : appliquer les options
  */
 void option(int no_exist, char **way, char *src, char *dest, dirent *fichier[])
-{
+{    
     if(OPT_N(options) && no_exist)
         option_n(way, fichier, dest, src);
     else if((!no_exist) && OPT_R(options, buf[0]) && IS_DEST(buf[0]))
