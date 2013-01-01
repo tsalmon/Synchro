@@ -63,7 +63,7 @@ char *saisie()
  * etre copié
  * Utilisation: Permet de copier des fichiers binaires
  */
-int modifier_fichier_binaire(char **way)
+int modifier_fichier(char **way)
 {
   FILE *f, *f2;
   char *buf;
@@ -95,35 +95,34 @@ int modifier_fichier_binaire(char **way)
 }
 
 /*
- * a revoir
- */
-int modifier_fichier(char **way)
-{
+  int modifier_fichier(char **way)
+  {
   int binaire = 1;
   char c;
   FILE *f;
   FILE *f2;
   if(NULL == (f = fopen(way[0],"r")))
-    {
-      printf("Impossible d'ouvrir le fichier %s.\n", way[0]);
-      return -1;
-    }
+  {
+  printf("Impossible d'ouvrir le fichier %s.\n", way[0]);
+  return -1;
+  }
   if(NULL == (f2 = fopen(way[1],"w+")))
-    {
-      printf("Impossible d'ouvrir le fichier %s.\n", way[1]);
-      fclose(f);
-      return -1;
-    }
+  {
+  printf("Impossible d'ouvrir le fichier %s.\n", way[1]);
+  fclose(f);
+  return -1;
+  }
   while(EOF != (c = fgetc(f) ) )
-    {
-      binaire = 0;
-      fputc(c, f2);
-    }
+  {
+  binaire = 0;
+  fputc(c, f2);
+  }
   fclose(f); fclose(f2);
   if(binaire)
-    modifier_fichier_binaire(way);
+  modifier_fichier_binaire(way);
   return 0;
-} 
+  } 
+*/
 
 /* Appel depuis sync
  * Condition d'appel: way[0](source) et way[1](destinationt
@@ -202,6 +201,7 @@ void option_n(char *way[], dirent *fichier[],char *dest, char *src)
         free(way[1]);
         option_s(src, dest, way, fichier);
     }
+    free(way[1]);
 }
 
 void option_s(char *src, char *dest, char **way, dirent *fichier[])
@@ -234,16 +234,27 @@ void option_r(char **way, char *dest, char *src, dirent *fichier[])
     synchro(way[0], way[1]);
     free(way[1]);
 }
+
+/*
+ * Appel: depuis synchro
+ * Contexte : appliquer les options
+ */
 void option(int no_exist, char **way, char *src, char *dest, dirent *fichier[])
 {
     if(OPT_N(options) && no_exist)
         option_n(way, fichier, dest, src);
-    if((!no_exist) && OPT_R(options, buf[0]) && IS_DEST(buf[0]))
+    else if((!no_exist) && OPT_R(options, buf[0]) && IS_DEST(buf[0]))
         option_r(way, dest, src, fichier);
-    if(!no_exist && OPT_S(options, buf[0]))
+    else if(!no_exist && OPT_S(options, buf[0]))
         option_s(src, dest, way, fichier);
 }
 
+/*
+ * Appel: depuis synchro
+ * Fonctionnement : verifier qu'un fichier d'une source existe deja dans la destination
+ * Si oui 
+ *    si le fichier est antierieur a celui de la source on le remplace
+ */
 int synchro_recherche(char **w, char *s, char *d, dirent *f[])
 {
     DIR *dest_rep;
@@ -272,6 +283,12 @@ int synchro_recherche(char **w, char *s, char *d, dirent *f[])
     return no_exist;
 }
 
+/*
+ * Appel : synchro
+ * Contexte : droits d'un fichier
+ * Utilisation : recuperer les droits d'un fichier, si on ne peut pas recuperer
+ * ses droits, alors on renvoit que le fichier n'existe pas 
+ */
 int synchro_droits(char *src, struct stat *buf_droits, int droits_init)
 {
     stat(src, buf_droits);
@@ -290,14 +307,22 @@ int synchro_droits(char *src, struct stat *buf_droits, int droits_init)
     return droits_init;
 }
 
+/*
+ * Appel: main
+ * Fonctionnement : execute les options sur 
+ * 1) On commence par regarder si on a les droits pour explorer le repertoire source
+ * 2) Pour chaque fichier du repertoire source:
+ * 3)      On execute synchro_recherche()
+ * 4)      Puis option()
+ */
 void synchro(char *src, char *dest)
 {
     char **way;
-    struct stat buf_droits;
-    int droits_init;
+    int droits_init = 0;
+    int no_exist;
+    struct stat buf_droits;  
     struct dirent *fichier[2];
     DIR *src_rep;
-    int no_exist;
     way = calloc(2, sizeof(char *));
     if((droits_init = synchro_droits(src, &buf_droits, droits_init)) == -1)
         return ;
@@ -317,7 +342,7 @@ void synchro(char *src, char *dest)
 }
 
 /*
- * Appel: depuis sync, ajouter, 
+ * Appel: depuis syncho, ajouter, 
  * Contexte: besoin de regrouper des information (char*)
  * Utilisation, permet de concatener deux pointeurs de 
  * chaines et de les séparer par un caractere spécifié

@@ -92,8 +92,6 @@ int main(int argc, char **argv)
       synchro(argv[2], argv[1]);
     }
   else
-    {
       help(0);
-    }
   return 0;
 }
