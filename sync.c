@@ -247,10 +247,12 @@ void option_s(char *src, char *dest, char **way, dirent *fichier[])
 
 void option_r(char **way, char *dest, char *src, dirent *fichier[])
 {
-    way[1] = addstr(dest, fichier[0]->d_name,'/');
-    printf("%s %s\n", way[0], way[1]);
+  struct stat f;
+  way[1] = addstr(dest, fichier[0]->d_name,'/');
+  stat(way[0], &f);
+  if((ino_t)f.st_ino != (ino_t) dest_stat.st_ino)
     synchro(way[0], way[1]);
-    free(way[1]);
+  free(way[1]);
 }
 
 /*
